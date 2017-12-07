@@ -26,9 +26,9 @@ var _cacheDir string
 var _results []int
 
 const _SAMPLE_SIZE = 10
-const _MEAN_THRESHOLD = 0.9 // this means that in 10 seconds at least 1/2 of it should be credit scenes
+const _MEAN_THRESHOLD = 0.7 // this means that in 10 seconds at least 1/2 of it should be credit scenes
 const _CREDITS_DURATION_THRESHOLD = 600
-const _THREADS_THRESHOLD = 5
+const _THREADS_THRESHOLD = 10
 
 func main() {
 	srcPtr := flag.String("src", "", "location of src to be analysed")
