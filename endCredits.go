@@ -219,7 +219,7 @@ func getIndex(lenToAverage int) int {
 				sum += float64(_results[i+j])
 			}
 		}
-		if average := sum / float64(j+1); average > _MEAN_THRESHOLD {
+		if average := sum / float64(j); average > _MEAN_THRESHOLD {
 			return i
 		}
 	}
