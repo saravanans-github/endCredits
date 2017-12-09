@@ -26,26 +26,38 @@ var _cacheDir string
 var _results []int
 
 const _SAMPLE_SIZE = 10
-const _MEAN_THRESHOLD = 0.7 // this means that in 10 seconds at least 1/2 of it should be credit scenes
-const _CREDITS_DURATION_THRESHOLD = 600
+const _MEAN_THRESHOLD = 0.8 // this means that in 10 seconds at least 1/2 of it should be credit scenes
+const _CREDITS_DURATION_THRESHOLD = 15 * 60
+const _CREDITS_THRESHOLD = 0.99
 const _THREADS_THRESHOLD = 10
 
 func main() {
-	srcPtr := flag.String("src", "", "location of src to be analysed")
+	srcPtr := flag.String("i", "", "location of src to be analysed")
+	makeStillsPtr := flag.Bool("ms", true, "if there's an existing ~cache directory then w/ the images do not need to be created")
 	flag.Parse()
 
 	src := *srcPtr
-	duration := getDurationInSeconds(src)
-	_cacheDir = makeCacheDir(src, true)
+	makeStills := *makeStillsPtr
 
-	seekTo := 0
+	if src == "" {
+		log.Fatalf("Source file not specified. Pls use -i= to specify a mp4 file")
+	}
+
+	duration := getDurationInSeconds(src)
+	_cacheDir = makeCacheDir(src, makeStills)
+
+	// it might be a short video so seek ahead to skip opening credits
+	seekTo := 20
 	if duration > _CREDITS_DURATION_THRESHOLD {
 		seekTo = duration - _CREDITS_DURATION_THRESHOLD
 	}
 
 	_results = make([]int, duration-seekTo)
 
-	mp4ToStills(src, _cacheDir, seekTo)
+	if makeStills {
+		mp4ToStills(src, _cacheDir, seekTo)
+	}
+
 	index := walkDirectory(_cacheDir, analyseCredits)
 
 	//index := getIndex(0)
@@ -80,7 +92,7 @@ func getDurationInSeconds(src string) (seconds int) {
 
 func mp4ToStills(src string, cacheDir string, t int) {
 
-	cmd := exec.Command("ffmpeg", "-ss", fmt.Sprintf("%d", t), "-i", src, "-vf", "fps=1", cacheDir+"/%3d.jpeg")
+	cmd := exec.Command("ffmpeg", "-ss", fmt.Sprintf("%d", t), "-i", src, "-s", "224x224", "-vf", "fps=1", cacheDir+"/%3d.jpeg")
 	var out, errB bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errB
@@ -148,7 +160,7 @@ func walkDirectory(dir string, walkFunc WalkFunc) int {
 			<-sem
 		}
 
-		if index := getIndex(i + j); index != 0 {
+		if index := getIndex(0, i+j); index != 0 {
 			return index
 		}
 	}
@@ -184,7 +196,7 @@ func analyseCredits(path string, info os.FileInfo, err error) error {
 	var isCredits = "0"
 	index, _ := strconv.Atoi(strings.Split(info.Name(), ".")[0])
 
-	if analysis.Credits > 0.9 {
+	if analysis.Credits > _CREDITS_THRESHOLD {
 		_results[index] = 1
 		isCredits = fmt.Sprintf("%d", _results[index])
 	}
@@ -197,7 +209,8 @@ func analyseCredits(path string, info os.FileInfo, err error) error {
 
 	defer file.Close()
 
-	if _, err := file.WriteString(info.Name() + "-" + isCredits + "\n"); err != nil {
+	analysisLog, _ := json.Marshal(analysis)
+	if _, err := file.WriteString(info.Name() + " | " + isCredits + " | " + string(analysisLog) + "\n"); err != nil {
 		log.Printf("Write analysis results... FAIL [%s]", err)
 		return err
 	}
@@ -205,17 +218,17 @@ func analyseCredits(path string, info os.FileInfo, err error) error {
 	return nil
 }
 
-func getIndex(lenToAverage int) int {
-	lenOfResults := lenToAverage
-	if lenToAverage == 0 {
-		lenOfResults = len(_results)
-	}
+func getIndex(start int, end int) int {
+	// lenOfResults := lenToAverage
+	// if lenToAverage == 0 {
+	// 	lenOfResults = len(_results)
+	// }
 
-	for i := 0; i < lenOfResults; i++ {
+	for i := start; i < end; i++ {
 		sum := 0.0
 		j := 0
 		for ; j < _SAMPLE_SIZE; j++ {
-			if i+j < lenOfResults {
+			if i+j < end {
 				sum += float64(_results[i+j])
 			}
 		}
